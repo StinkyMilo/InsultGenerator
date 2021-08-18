@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>The Insult Generator</title>
+    <meta charset="utf-8" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Parisienne&display=swap" rel="stylesheet"> 
+  </head>
+  <body>
+    <p style="font:32px Parisienne;" id="insult"></p>
+    <button onclick="fadeInsult();">GENERATE</button>
+    <br/>
+    Mode:
+    <select id="dropdown" onchange="updateMode();">
+        <option value="insults">Insults</option>
+        <option value="words">Words</option>
+        <option value="gameIdeas">Game Ideas</option>
+        <option value="custom">Custom</option>
+    </select>
+    <div id="import" style="visibility:hidden;">
+        <p>Link to Google Sheet (Must be publically visible):</p><input id="link" type="text" value="https://docs.google.com/spreadsheets/d/1Uopl9Y1Uwxe0J74HH-N5ZTtF3TGKbtY5ddbU_xAFL7w/edit?usp=sharing">
+        <p>Name of active Sheet</p><input id="name" type="text" value="Insults">
+        <br/>
+        <button onclick="updateSheet();">Load</button>
+    </div>
+    <script type="text/javascript">
+    var DISCOVERY_DOCS = ["https://sheets.googleapis.com/$discovery/rest?version=v4"];
+    var insults = {};
+    var insultText = document.getElementById("insult");
+    function handleClientLoad() {
+        gapi.load('client:auth2', initClient);
+    }
+    function initClient() {
+    gapi.client.init({
+        apiKey: "KEYHIDDEN",
+        discoveryDocs: DISCOVERY_DOCS
+    }).then(function(){
+        getJson('1Uopl9Y1Uwxe0J74HH-N5ZTtF3TGKbtY5ddbU_xAFL7w',"Insults");
+    });
+    }
+    function getJson(id,sheetName) {
+        gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: id,
+            range: sheetName,
+        }).then(function(response) {
+            insults={};
+            var range = response.result.values;
+            for(var i = 0; i < range.length; i++){
+                insults[range[0][i]] = [];
+                var x = 1;
+                while(x < range.length-1 && range[x][i] != null && range[x][i].length > 0){
+                    insults[range[0][i]].push(range[x][i]);
+                    x++;
+                }
+            }
+            console.log(range);
+            generateInsult();
+        }, function(response) {
+            insultText.innerHTML='Error: ' + response.result.error.message;
+        });
+    }
+    function randint(low, high){
+        return Math.round(Math.random()*(high - low)) + low;
+    }
+    function chooseFromList(list){
+        return randint(0,list.length-1);
+    }
+    function generateInsult(){
+        var insult = getInsult(insults,"root",{});
+        if(insult.length>1){
+            insult = insult[0].toUpperCase() + insult.substring(1);
+        }else{
+            insult = insult[0].toUpperCase();
+        }
+        insultText.innerHTML=insult;
+    }
+    function aOrAn(nextWord){
+        var match = /\w+/.exec(nextWord);
+        if(match){
+            var word = match[0];
+        }else{
+            return "an";
+        }
+        var lWord = word.toLowerCase();
+        var exceptions = ["euler","hour","hono","honest","heir"];
+        for(var i in exceptions){
+            if(lWord.indexOf(exceptions[i])==0){
+                return "an";
+            }
+        }
+        if(lWord.length==1){
+            if("aehilmnorsx".indexOf(lWord)>=0){
+                return "an";
+            }
+            return "a";
+        }
+        if(word.match(/(?!FJO|[HLMNS]Y.|RY[EO]|SQU|(F[LR]?|[HL]|MN?|N|RH?|S[CHKLMNPTVW]?|X(YL)?)[AEIOU])[FHLMNRSX][A-Z]/)){
+            return "an";
+        }
+        regexes = [/^e[uw]/, /^onc?e\b/, /^uni([^nmd]|mo)/, /^u[bcfhjkqrst][aeiou]/];
+        for(var i in regexes){
+            if(lWord.match(regexes[i])){
+                return "a";
+            }
+        }
+        if(word.match(/^U[NK][AIEO]/)){
+            return "a";
+        }else if(word==word.toUpperCase()){
+            if("aehilmnorsx".indexOf(lWord[0])>=0){
+                return "an";
+            }
+            return "a";
+        }
+        if("aeiou".indexOf(lWord[0])>=0){
+            return "an";
+        }
+        if(lWord.match(/^y(b[lor]|cl[ea]|fere|gg|p[ios]|rou|tt)/)){
+            return "an";
+        }
+        return "a";
+    }
+    var regExp = /\[(.*?)\]/g;
+    function getInsult(json,root,stack){
+        //Stack format: {"root":[0]} for all used items.
+        if(!json.hasOwnProperty(root)){
+            var roots = root.split("|");
+            var thisArray = [];
+            for(var i = 0; i < roots.length; i++){
+                thisArray=thisArray.concat(json[roots[i]])
+            }
+            json[root] = thisArray;
+        }
+        var possibilities = [...json[root]]
+        var chosen;
+        if(!stack.hasOwnProperty(root)){
+            chosen = chooseFromList(possibilities);
+            stack[root] = [possibilities[chosen]];
+        }else{
+            for(var i = 0; i < stack[root].length; i++){
+                possibilities[stack[root][i]]="DELETE";
+            }
+            var i = 0;
+            while(i < possibilities.length){
+                if(possibilities[i]=="DELETE"){
+                    possibilities.splice(i,1);
+                }else{
+                    i++;
+                }
+            }
+            chosen = chooseFromList(possibilities);
+            stack[root].push([possibilities[chosen]]);
+        }
+        chosen = possibilities[chosen];
+        console.log(chosen);
+        var evaluations = Array.from(chosen.matchAll(regExp));
+        for(var i = 0; i < evaluations.length; i++){
+            var thing = evaluations[i][1];
+            var questionMark = thing.indexOf("?");
+            var chance = 100;
+            if(questionMark>-1){
+                var secondQuestionMark = thing.substring(questionMark+1).indexOf("?");
+                var numstr = thing.substring(questionMark+1,);
+                chance = parseInt(numstr);
+                thing = thing.substring(secondQuestionMark+2);
+                console.log(thing);
+            }
+            if(chance==100 || randint(1,100)>=chance){
+                chosen = chosen.replace(evaluations[i][0],getInsult(json,thing,stack));
+            }else{
+                chosen=chosen.replace(evaluations[i][0],"");
+            }
+        }
+        var aPos = chosen.indexOf("{a}");
+        while(aPos>=0){
+            chosen = chosen.replace("{a}",aOrAn(chosen.substring(aPos+3)));
+            aPos = chosen.indexOf("{a}");
+        }
+        return chosen;
+    }
+    function fadeInsult(){
+        var stage = 0;
+        insultText.style.opacity=1;
+        var fade = setInterval(function(){
+            if(stage==0){
+                if(insultText.style.opacity>0){
+                    insultText.style.opacity-=0.025;
+                }else{
+                    stage++;
+                    generateInsult();
+                    insultText.style.opacity=0;
+                }
+            }else if(stage==1){
+                if(insultText.style.opacity<1){
+                    insultText.style.opacity=parseFloat(insultText.style.opacity)+0.025;
+                }else{
+                    clearInterval(fade);
+                }
+            }
+        },10);
+    }
+    function updateMode(){
+        var mode = document.getElementById("dropdown").value;
+        if(mode=="insults"){
+            getJson('1Uopl9Y1Uwxe0J74HH-N5ZTtF3TGKbtY5ddbU_xAFL7w',"Insults");
+        }else if(mode=="words"){
+            getJson('1Uopl9Y1Uwxe0J74HH-N5ZTtF3TGKbtY5ddbU_xAFL7w',"Words");
+        }else if(mode=="gameIdeas"){
+            getJson('1Uopl9Y1Uwxe0J74HH-N5ZTtF3TGKbtY5ddbU_xAFL7w',"Game Ideas");
+        }
+        document.getElementById("import").style.visibility = mode=="custom"?"visible":"hidden";
+    }
+    function updateSheet(){
+        var sheetText = document.getElementById("link").value;
+        sheetText=sheetText.substring(sheetText.indexOf("/d/")+3,sheetText.indexOf("/edit?"));
+        getJson(sheetText,document.getElementById("name").value);
+    }
+    </script>
+
+    <script async defer src="https://apis.google.com/js/api.js"
+      onload="this.onload=function(){};handleClientLoad()"
+      onreadystatechange="if (this.readyState === 'complete') this.onload()">
+    </script>
+  </body>
+</html>
